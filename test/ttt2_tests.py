@@ -44,6 +44,9 @@ X_4X4_BOARD = [['x', 'x', 'x', 'o'],
                 ['x', 'x', 'x', 'x'], 
                 ['a', 'a', 'a', 'o']]
 
+x_move_gameState = tick.GameState('test_xa1',x_move_board,'o',[(0,0)])
+empty_gameState = tick.GameState('test_empty',empty_board,'x',[])
+
 def test_basic():
     print("I RAN!", end='')
  
@@ -55,12 +58,16 @@ def test_board_size():
         assert_equal(tick.choose_board_size(),4)
 
 def test_save_load_game():
-    with open('docs/test.txt','w') as test_file:
+    with open('config/config.txt','r') as f:
+        f_info = f.read() 
+    py_f_info = json.loads(f_info)
+    saved_test_games = py_f_info['saved_test_games']
+    with open(saved_test_games,'w') as test_file:
         test_file.write("{}")
     with patch('builtins.input', lambda _: 'test_save'):
-        tick.save_game(x_move_board,'docs/test.txt','o',1)
+        tick.save_game(x_move_gameState,saved_test_games)
     with patch('builtins.input', lambda _: 'test_save'):
-        assert_equal(tick.load_saved_board("docs/test.txt").gb, x_move_board) #is this good? 
+        assert_equal(tick.load_saved_board(saved_test_games).gb, x_move_board)
 
 def test_add_axis_title():
     assert_equal(tick.add_axis_title(empty_board),[[' ', '1', '2', '3'], ['A', '_', '_', '_'], ['B', '_', '_', '_'], ['C', '_', '_', '_']])
@@ -96,12 +103,18 @@ def test_check_availability():
 
 def test_get_move():
     with patch('builtins.input', lambda _: 'a1'):
-        assert_equal(tick.get_move('x',empty_board), (0,0))
+        assert_equal(tick.get_move(empty_gameState), (0,0))
     with patch('builtins.input', lambda _: 'save'):
-        assert_equal(tick.get_move('x',empty_board), 'save')
+        assert_equal(tick.get_move(empty_gameState), 'save')
+    with patch('builtins.input', lambda _: 'undo'):
+        assert_equal(tick.get_move(x_move_gameState), 'undo')
 
 
 def test_update_board():
-    assert_equal(tick.update_board(empty_board,'x',(0,0)), x_move_board)
+    assert_equal(tick.update_board(empty_gameState, (0,0)), x_move_board)
+
+
+def test_undo_turn():
+    assert_equal(tick.undo_turn(x_move_board, (0,0)), empty_board)
         
     
