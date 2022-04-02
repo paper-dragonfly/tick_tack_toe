@@ -1,0 +1,2 @@
+{"saved_games":"docs/ttt_game.txt", 
+"saved_test_games" : "docs/test.txt"}

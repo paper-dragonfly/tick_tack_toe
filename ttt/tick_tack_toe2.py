@@ -1,12 +1,12 @@
 # TO DO
+# create config file for save.txt 
 
-#Create game that can be saved
 import copy
 import json 
 from datetime import datetime
 import re 
 from typing import Dict, List, Tuple, Union
-from xmlrpc.client import Boolean
+
 EXIT = 'exit'
 
 EMPTY_3X3_BOARD = [['_','_','_'],
@@ -25,6 +25,12 @@ class GameState:
         self.current_player: str = current_player
         self.move_log: List[tuple] = move_log
         
+def get_saved_games_file_name(config_file):    
+    with open(config_file,'r') as f:
+        f_info = f.read() 
+    py_f_info = json.loads(f_info)
+    return py_f_info['saved_games']
+saved_games_data = get_saved_games_file_name('config/config.txt')
 
 def choose_board_size() -> int:
     resp_choice = input('Choose a board size \n a. 3x3 \n b. 4x4\n> ') 
@@ -38,7 +44,7 @@ def choose_board_size() -> int:
         choose_board_size()
     return size 
 
-def save_game(game_state: GameState, file_name:str) -> Boolean:
+def save_game(game_state: GameState, file_name:str) -> bool:
     with open(file_name,'r') as f:
         save_dict = json.loads(f.read())
     game_state.name = input('save as: ')
@@ -106,7 +112,7 @@ def print_beautiful_board(gb_copy:List[List]) -> str:
     return board_string
      
 
-def check_hor(gb:List[List]) -> Union[str,Boolean]:
+def check_hor(gb:List[List]) -> Union[str,bool]:
     board_size = len(gb)
     for r in gb:
         s_check = 0
@@ -119,7 +125,7 @@ def check_hor(gb:List[List]) -> Union[str,Boolean]:
     return False
 
 
-def check_vert(gb:List[List]) -> Union[str,Boolean]:
+def check_vert(gb:List[List]) -> Union[str,bool]:
     board_size = len(gb)
     col = 0
     for c in range(board_size):
@@ -134,7 +140,7 @@ def check_vert(gb:List[List]) -> Union[str,Boolean]:
     return False 
 
 
-def check_di(gb:List[List]) -> Union[str,Boolean]:
+def check_di(gb:List[List]) -> Union[str,bool]:
     board_size = len(gb)
     
     target = gb[0][0]
@@ -155,7 +161,7 @@ def check_di(gb:List[List]) -> Union[str,Boolean]:
     return False
             
 
-def check_win(gb:List[List]) -> Union[str,Boolean]:
+def check_win(gb:List[List]) -> Union[str,bool]:
     poss = [check_hor(gb),check_vert(gb),check_di(gb)]
     for f in poss:
         if f:
@@ -189,7 +195,7 @@ def convert(move:str) -> tuple:
     c = con_dict[move][1]
     return r,c
 
-def check_availability(gb:List[List],r:int,c:int) -> Boolean:
+def check_availability(gb:List[List],r:int,c:int) -> bool:
     if gb[r][c] == '_':
         return True 
     else:
@@ -239,7 +245,7 @@ def play() -> str:
     print("\nWelcome to Tick_Tack_Toe\nNote: write 's' on your turn to save the game\n")
     resp_game_type = input("What kind of game do you want? \nA. New Game \nB. Saved Game\n> ")
     if resp_game_type[0].capitalize() == 'B' or resp_game_type[0].capitalize() == 'S':
-        game_state = load_saved_board('docs/ttt_game.txt')
+        game_state = load_saved_board(saved_games_data)
         gb = game_state.gb
         current_player = game_state.current_player
         move_log = game_state.move_log
@@ -251,16 +257,14 @@ def play() -> str:
         elif chosen_board_size == 3: 
             gb = copy.deepcopy(EMPTY_3X3_BOARD)
         game_state = GameState('new',gb,'x',list())
-        # gb = game_state.gb
-        # current_player = game_state.current_player
-        # move_log = game_state.move_log
     print_beautiful_board(add_axis_title(game_state.gb))
+
     winner = False
     while not winner:
         processed_user_input = get_move(game_state)
         # Save game
         if processed_user_input == 'save':
-            save_game(game_state,'docs/ttt_game.txt')
+            save_game(game_state,saved_games_data)
             print('your game has been saved')
             return EXIT
         # Undo last move
@@ -268,6 +272,7 @@ def play() -> str:
             last_coordinate = game_state.move_log.pop()
             game_state.gb = undo_turn(game_state.gb,last_coordinate)
             print_beautiful_board(add_axis_title(game_state.gb))
+       # update game with new move
         else:
             game_state.gb = update_board(game_state, processed_user_input)
             game_state.move_log.append(processed_user_input)
