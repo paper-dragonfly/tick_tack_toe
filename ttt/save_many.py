@@ -10,23 +10,26 @@ alphabet = ascii_letters.lower()
 game_state = tick.GameState('',EMPTY_3X3_BOARD,'x',[])
 
 def save_many(game_state):
-    for i in range(1000):
+    for i in range(100):
         save_name = ''
         for l in range(6):
             # randomly generate name 10 letters long
             save_name += random.choice(alphabet)
-        file_name = f'docs/alphabetized/{save_name[0]}.json'
-        Path(file_name).touch(exist_ok=True)
-        with open(file_name,'r') as f:
-            f_info = f.read()
-        if f_info:
-            with patch('builtins.input', lambda _: save_name):
-                tick.save_game(game_state,file_name)
-        else:
-            with open(file_name,'w') as f:
-                f.write('{}')
-            with patch('builtins.input', lambda _: save_name):
-                tick.save_game(game_state,file_name)
+        with patch('builtins.input', lambda _: save_name):
+                tick.save_game(game_state)
+
+        # file_name = f'docs/alphabetized/{save_name[0]}.json'
+        # Path(file_name).touch(exist_ok=True)
+        # with open(file_name,'r') as f:
+        #     f_info = f.read()
+        # if f_info:
+        #     with patch('builtins.input', lambda _: save_name):
+        #         tick.save_game(game_state,file_name)
+        # else:
+        #     with open(file_name,'w') as f:
+        #         f.write('{}')
+        #     with patch('builtins.input', lambda _: save_name):
+        #         tick.save_game(game_state,file_name)
 
              
 

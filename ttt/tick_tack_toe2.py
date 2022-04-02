@@ -4,6 +4,7 @@
 import copy
 import json 
 from datetime import datetime
+from pathlib import Path
 import re 
 from typing import Dict, List, Tuple, Union
 
@@ -25,12 +26,6 @@ class GameState:
         self.current_player: str = current_player
         self.move_log: List[tuple] = move_log
         
-def get_saved_games_file_name(config_file):    
-    with open(config_file,'r') as f:
-        f_info = f.read() 
-    py_f_info = json.loads(f_info)
-    return py_f_info['saved_games']
-saved_games_data = get_saved_games_file_name('config/config.txt')
 
 def choose_board_size() -> int:
     resp_choice = input('Choose a board size \n a. 3x3 \n b. 4x4\n> ') 
@@ -44,15 +39,29 @@ def choose_board_size() -> int:
         choose_board_size()
     return size 
 
-def save_game(game_state: GameState, file_name:str) -> bool:
-    with open(file_name,'r') as f:
-        save_dict = json.loads(f.read())
+
+def get_appropriate_save_directory(config_file):    
+    with open(config_file,'r') as f:
+        py_f_info = json.loads(f.read())
+    return py_f_info['saved_games_directory']
+# saved_games_data = get_saved_games_file_name('config/config.txt')
+
+def save_game(game_state: GameState) -> bool:
     game_state.name = input('save as: ')
+    file_name = get_appropriate_save_directory('config/config.txt')+f"/{game_state.name[0]}.json"
+    Path(file_name).touch(exist_ok=True)
+    with open(file_name,'r') as f:
+        f_data = f.read()
+    if f_data:
+        save_dict = json.loads(f_data)
+    else:
+        save_dict = {}
+    
     if game_state.name in save_dict.keys():
         print('Name already exists, do you want to overwrite it?')
         overwrite = input('Y/N:  ')
         if overwrite.upper() == 'N':
-            save_game(game_state,file_name)        
+            save_game(game_state)        
     save_dict[game_state.name] = {
         'game_board' : game_state.gb,
         'next_move' : game_state.current_player,
@@ -64,7 +73,9 @@ def save_game(game_state: GameState, file_name:str) -> bool:
     return True
 
 
-def load_saved_board(file_name:str) -> GameState:
+def load_saved_board() -> GameState:
+    game_name = input('What is the first letter of the game you want to open? ')
+    file_name = get_appropriate_save_directory('config/config.txt')+f"/{game_name[0].lower()}.json"
     with open(file_name) as f:    
         f_info = f.read()
     py_info = json.loads(f_info)
@@ -79,7 +90,7 @@ def load_saved_board(file_name:str) -> GameState:
         return GameState(game_choice, gb,current_player,move_log)
     except KeyError:
         print('Invalid name - must type name exactly')
-        return load_saved_board(file_name)
+        return load_saved_board()
     
 
 # VISUAL | Adds row and colum labels - asethetic only
@@ -245,7 +256,7 @@ def play() -> str:
     print("\nWelcome to Tick_Tack_Toe\nNote: write 's' on your turn to save the game\n")
     resp_game_type = input("What kind of game do you want? \nA. New Game \nB. Saved Game\n> ")
     if resp_game_type[0].capitalize() == 'B' or resp_game_type[0].capitalize() == 'S':
-        game_state = load_saved_board(saved_games_data)
+        game_state = load_saved_board()
         gb = game_state.gb
         current_player = game_state.current_player
         move_log = game_state.move_log
@@ -264,7 +275,7 @@ def play() -> str:
         processed_user_input = get_move(game_state)
         # Save game
         if processed_user_input == 'save':
-            save_game(game_state,saved_games_data)
+            save_game(game_state)
             print('your game has been saved')
             return EXIT
         # Undo last move
