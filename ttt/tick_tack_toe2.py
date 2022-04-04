@@ -40,15 +40,17 @@ def choose_board_size() -> int:
     return size 
 
 
-def get_appropriate_save_directory(config_file):    
+def get_appropriate_save_directory(config_file,test=False):    
     with open(config_file,'r') as f:
         py_f_info = json.loads(f.read())
+    if test == True:
+        return py_f_info['saved_test_games']
     return py_f_info['saved_games_directory']
 # saved_games_data = get_saved_games_file_name('config/config.txt')
 
-def save_game(game_state: GameState) -> bool:
+def save_game(game_state: GameState,test=False) -> bool:
     game_state.name = input('save as: ')
-    file_name = get_appropriate_save_directory('config/config.txt')+f"/{game_state.name[0]}.json"
+    file_name = get_appropriate_save_directory('config/config.txt',test)+f"/{game_state.name[0]}.json"
     Path(file_name).touch(exist_ok=True)
     with open(file_name,'r') as f:
         f_data = f.read()
@@ -73,9 +75,9 @@ def save_game(game_state: GameState) -> bool:
     return True
 
 
-def load_saved_board() -> GameState:
+def load_saved_board(test=False) -> GameState:
     game_name = input('What is the first letter of the game you want to open? ')
-    file_name = get_appropriate_save_directory('config/config.txt')+f"/{game_name[0].lower()}.json"
+    file_name = get_appropriate_save_directory('config/config.txt',test)+f"/{game_name[0].lower()}.json"
     with open(file_name) as f:    
         f_info = f.read()
     py_info = json.loads(f_info)

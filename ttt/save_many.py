@@ -18,26 +18,5 @@ def save_many(game_state):
         with patch('builtins.input', lambda _: save_name):
                 tick.save_game(game_state)
 
-        # file_name = f'docs/alphabetized/{save_name[0]}.json'
-        # Path(file_name).touch(exist_ok=True)
-        # with open(file_name,'r') as f:
-        #     f_info = f.read()
-        # if f_info:
-        #     with patch('builtins.input', lambda _: save_name):
-        #         tick.save_game(game_state,file_name)
-        # else:
-        #     with open(file_name,'w') as f:
-        #         f.write('{}')
-        #     with patch('builtins.input', lambda _: save_name):
-        #         tick.save_game(game_state,file_name)
-
-             
-
-# def sort_games():
-#     with open('docs/megafile.json','r') as f:
-#         py_f_data = json.loads(f.read())
-    
-
-
 if __name__ == "__main__":      
     save_many(game_state)

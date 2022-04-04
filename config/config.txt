@@ -1,2 +1,2 @@
 {"saved_games_directory":"docs/alphabetized", 
-"saved_test_games" : "docs/test.txt"}
+"saved_test_games" : "docs/test_nosetests"}

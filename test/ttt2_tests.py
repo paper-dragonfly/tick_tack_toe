@@ -58,16 +58,9 @@ def test_board_size():
         assert_equal(tick.choose_board_size(),4)
 
 def test_save_load_game():
-    with open('config/config.txt','r') as f:
-        f_info = f.read() 
-    py_f_info = json.loads(f_info)
-    saved_test_games = py_f_info['saved_test_games']
-    with open(saved_test_games,'w') as test_file:
-        test_file.write("{}")
     with patch('builtins.input', lambda _: 'test_save'):
-        tick.save_game(x_move_gameState,saved_test_games)
-    with patch('builtins.input', lambda _: 'test_save'):
-        assert_equal(tick.load_saved_board(saved_test_games).gb, x_move_board)
+        tick.save_game(x_move_gameState,True)
+        assert_equal(tick.load_saved_board(True).gb, x_move_board)
 
 def test_add_axis_title():
     assert_equal(tick.add_axis_title(empty_board),[[' ', '1', '2', '3'], ['A', '_', '_', '_'], ['B', '_', '_', '_'], ['C', '_', '_', '_']])
