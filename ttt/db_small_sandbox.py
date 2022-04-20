@@ -17,20 +17,22 @@ def config(config_file:str='config/config.ini', section:str='postgresql') -> dic
     return db 
 
 params = config()
-
 conn = psycopg2.connect(**params)
 cur = conn.cursor()
-cur.execute("SELECT * FROM saved_games ")
+
+####
+name = 'db_tet'
+sql = "SELECT * FROM saved_games WHERE saved_games.game_name = %s"
+sql2 = "SELECT game_name FROM saved_games"
+val = (name,)
+# cur.execute(sql,val)
+cur.execute(sql2)
 data = cur.fetchall()
+for i in range(len(data)):
+    print(data[i][0])
+# print(len(data))
 print(data)
+#### 
 
-# create_sport_table = """CREATE TABLE IF NOT EXISTS sport(
-#     id SERIAL PRIMARY KEY, 
-#     child_name VARCHAR(50) NOT NULL, 
-#     sports VARCHAR(25))"""
-
-# cur.execute(create_sport_table)
-# print('successful added sports')
 conn.commit()
-
 conn.close() 

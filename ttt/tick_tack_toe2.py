@@ -8,7 +8,8 @@ from pathlib import Path
 import re 
 from typing import Dict, List, Tuple, Union
 import psycopg2
-import configparser
+from configparser import ConfigParser #to do with accesing .ini files
+import pdb 
 
 EXIT = 'exit'
 
@@ -50,51 +51,107 @@ def get_appropriate_save_directory(config_file:str,test=False) -> str:
     return config.get('INDEX_ALPHABET_FILES','saved_games_directory')
     # eg "docs/alphebetized"
 
-def save_game(game_state: GameState,test=False) -> bool:
-    game_state.name = input('save as: ')
-    file_name = get_appropriate_save_directory('config/config.ini',test)+f"/{game_state.name[0]}.json"
-    Path(file_name).touch(exist_ok=True)
-    with open(file_name,'r') as f:
-        f_data = f.read()
-    if f_data:
-        save_dict = json.loads(f_data)
+# Get db connection data from config.ini 
+def config(config_file:str='config/config.ini', section:str='postgresql') -> dict:
+    # pdb.set_trace()
+    parser = ConfigParser()
+    parser.read(config_file)
+    db_params = {}
+    if parser.has_section(section):
+        item_tups = parser.items(section)
+        for tup in item_tups:
+            db_params[tup[0]] = tup[1]
     else:
-        save_dict = {}
-    
-    if game_state.name in save_dict.keys():
-        print('Name already exists, do you want to overwrite it?')
-        overwrite = input('Y/N:  ')
+        raise Exception(f"Section {section} not found in file {config_file}")
+    return db_params 
+
+# Create table (if unexistant) in postgres db to store info of saved games 
+def create_saved_games_table():
+    sql_create = """
+    CREATE TABLE IF NOT EXISTS saved_games(
+        game_id Serial PRIMARY KEY,
+        game_name VARCHAR(50) NOT NULL,
+        gb TEXT[3][3] NOT NULL,
+        current_player VARCHAR(10), 
+        move_log JSONB)"""
+
+    conn = None
+    params = config()
+    conn = psycopg2.connect(**params)
+    cur = conn.cursor()
+    cur.execute(sql_create) 
+    conn.commit() 
+    conn.close()
+
+def save_game(game_state:GameState) -> None:
+    # pdb.set_trace()
+    game_state.name = input('save as: ')
+    overwrite = None
+
+    conn = None
+    params = config()
+    conn = psycopg2.connect(**params)
+    cur = conn.cursor()
+
+    # check if game already in db
+    sql_check_db = "SELECT * FROM saved_games WHERE saved_games.game_name = %s"
+    cur.execute(sql_check_db,(game_state.name,))
+    db_data = cur.fetchall()
+    if len(db_data) > 0: #update entry
+        print("\nGame already exists, do you want to overwrite it?")
+        overwrite = input("\nY/N: ")
         if overwrite.upper() == 'N':
-            save_game(game_state)        
-    save_dict[game_state.name] = {
-        'game_board' : game_state.gb,
-        'next_move' : game_state.current_player,
-        'move_log': game_state.move_log,
-        'save_time' : str(datetime.now())}    
-    save_str = json.dumps(save_dict) 
-    with open(file_name, 'w') as f:
-        f.write(save_str)
+            cur.close()
+            conn.close()
+            # pdb.set_trace()
+            return save_game(game_state)
+        else: 
+            sql = """UPDATE saved_games 
+                SET gb = %s, current_player = %s, move_log = %s
+                WHERE saved_games.game_name = %s"""
+            vals = (game_state.gb, game_state.current_player, json.dumps(game_state.move_log), game_state.name)
+    else: #add new entry
+        sql = """INSERT INTO saved_games(game_name,gb,current_player,move_log)
+                    VALUES (%s,%s,%s,%s)"""
+        vals = (game_state.name, game_state.gb, game_state.current_player, json.dumps(game_state.move_log))
+    
+    cur.execute(sql,vals)
+    conn.commit() 
+    cur.close()
+    conn.close()
     return True
 
-
-def load_saved_board(test=False) -> GameState:
-    game_name = input('What is the first letter of the game you want to open? ')
-    file_name = get_appropriate_save_directory('config/config.ini',test)+f"/{game_name[0].lower()}.json"
-    with open(file_name) as f:    
-        f_info = f.read()
-    py_info = json.loads(f_info)
-    print('\nSAVED GAMES')
-    for key in py_info:
-        print(key) 
-    game_choice = input('\nChoose a game to load: ')
-    try:
-        gb = py_info[game_choice]['game_board']
-        current_player = py_info[game_choice]['next_move']
-        move_log = py_info[game_choice]['move_log']
-        return GameState(game_choice, gb,current_player,move_log)
-    except KeyError:
+def load_saved_board() -> GameState:
+    conn = None
+    params = config()
+    conn = psycopg2.connect(**params)
+    cur = conn.cursor()
+    
+    #list games
+    sql_list_games = """SELECT game_name FROM saved_games"""
+    cur.execute(sql_list_games)
+    game_data = cur.fetchall()
+    print("\nSAVED GAMES")
+    for i in range(len(game_data)):
+        print(game_data[i][0])
+    
+    #choose and load game
+    user_choice = input('\nChoose a game to load: ')
+    sql_get_game = """SELECT * FROM saved_games WHERE saved_games.game_name = %s """
+    vals = (user_choice,)
+    cur.execute(sql_get_game,vals)
+    game_data = cur.fetchone()
+    # restart if user input not in db
+    if game_data == None:
         print('Invalid name - must type name exactly')
-        return load_saved_board()
+        cur.close()
+        conn.close()
+        load_saved_board()
+    #close connection, return loaded game
+    else:
+        cur.close()
+        conn.close()  
+        return GameState(game_data[1],game_data[2],game_data[3],game_data[4])
     
 
 # VISUAL | Adds row and colum labels - asethetic only

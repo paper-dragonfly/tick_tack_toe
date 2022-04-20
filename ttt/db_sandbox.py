@@ -5,9 +5,9 @@
 # create table(s) in ttt_db : DONE
 # connect to db and add a game : DONE
 # connect to db and load game: DONE
-# integrate db saving into ttt game: 
+# integrate db saving into ttt game: DONE
 # save a bunch of games to the db
-# be able to load any of those games
+# be able to load any of those games: DONE
 # use indexing to make it easy to search db
 
 import psycopg2
