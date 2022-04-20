@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 import re 
 from typing import Dict, List, Tuple, Union
+import psycopg2
+import configparser
 
 EXIT = 'exit'
 
@@ -25,7 +27,6 @@ class GameState:
         self.gb: List[List] = gb
         self.current_player: str = current_player
         self.move_log: List[tuple] = move_log
-        
 
 def choose_board_size() -> int:
     resp_choice = input('Choose a board size \n a. 3x3 \n b. 4x4\n> ') 
@@ -40,17 +41,18 @@ def choose_board_size() -> int:
     return size 
 
 
-def get_appropriate_save_directory(config_file,test=False):    
-    with open(config_file,'r') as f:
-        py_f_info = json.loads(f.read())
+# returns path to directory where game is/should be saved
+def get_appropriate_save_directory(config_file:str,test=False) -> str:    
+    config = configparser.ConfigParser()
+    config.read(config_file)
     if test == True:
-        return py_f_info['saved_test_games']
-    return py_f_info['saved_games_directory']
-# saved_games_data = get_saved_games_file_name('config/config.txt')
+        return config.get('INDEX_ALPHABET_FILES','saved_test_games')
+    return config.get('INDEX_ALPHABET_FILES','saved_games_directory')
+    # eg "docs/alphebetized"
 
 def save_game(game_state: GameState,test=False) -> bool:
     game_state.name = input('save as: ')
-    file_name = get_appropriate_save_directory('config/config.txt',test)+f"/{game_state.name[0]}.json"
+    file_name = get_appropriate_save_directory('config/config.ini',test)+f"/{game_state.name[0]}.json"
     Path(file_name).touch(exist_ok=True)
     with open(file_name,'r') as f:
         f_data = f.read()
@@ -77,7 +79,7 @@ def save_game(game_state: GameState,test=False) -> bool:
 
 def load_saved_board(test=False) -> GameState:
     game_name = input('What is the first letter of the game you want to open? ')
-    file_name = get_appropriate_save_directory('config/config.txt',test)+f"/{game_name[0].lower()}.json"
+    file_name = get_appropriate_save_directory('config/config.ini',test)+f"/{game_name[0].lower()}.json"
     with open(file_name) as f:    
         f_info = f.read()
     py_info = json.loads(f_info)
@@ -257,6 +259,7 @@ def undo_turn(gb:List[List],last_coordinates:tuple) -> List[List]:
 def play() -> str:
     print("\nWelcome to Tick_Tack_Toe\nNote: write 's' on your turn to save the game\n")
     resp_game_type = input("What kind of game do you want? \nA. New Game \nB. Saved Game\n> ")
+    # Saved game
     if resp_game_type[0].capitalize() == 'B' or resp_game_type[0].capitalize() == 'S':
         game_state = load_saved_board()
         gb = game_state.gb
