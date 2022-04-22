@@ -87,7 +87,7 @@ def select_users() -> tuple:
     
     #print all user names already in db
     sql = """SELECT user_name FROM ttt_users"""
-    names = query_db(sql)
+    names : List[Tuple[str]] = query_db(sql)
     for i in range(len(names)):
         print(names[i][0])
 
@@ -98,8 +98,9 @@ def select_users() -> tuple:
     # add player to db if they don't already exist and assign them the lowest rank
     for player in (player1,player2):
         # pdb.set_trace()
-        sql = """SELECT MAX ("rank") FROM ttt_users"""
-        new_user_rank = (query_db(sql))[0][0] + 1
+        sql = """SELECT MAX("rank") FROM ttt_users"""
+        max_rank : int = query_db(sql)[0][0]
+        new_user_rank = max_rank + 1
         sql = """INSERT INTO ttt_users(user_name,rank) VALUES(%s,%s) ON CONFLICT (user_name) DO NOTHING"""
         str_subs = (player, new_user_rank)
         update_db(sql, str_subs) 
@@ -174,37 +175,39 @@ def save_game(game_state:GameState) -> None:
     return True
 
 def load_saved_board() -> GameState:
+    # TODO:Nico use query_db
     conn = None
     params = config()
     conn = psycopg2.connect(**params)
     cur = conn.cursor()
     
-    game_data = []
-    while len(game_data) == 0: 
+    game_names = []
+    while len(game_names) == 0: 
         search = input("search for a game or press enter to list all: ")
 
         #list games
-        sql_list_games = f"""SELECT game_name FROM saved_games WHERE game_name LIKE '{search}%' """
-        cur.execute(sql_list_games)
-        game_data = cur.fetchall()
-        if len(game_data) == 0:
+        sql_list_games = """SELECT game_name FROM saved_games WHERE game_name LIKE '%s%' """
+        cur.execute(sql_list_games, (search,))
+        game_names : List[str] = [t[0] for t in cur.fetchall()]
+        if len(game_names) == 0:
             print("\nNo games found, try again")
-        elif len(game_data) == 1:
-            user_choice = game_data[0][0]
+        elif len(game_names) == 1:
+            # if there is only one result, use that one automatically
+            user_choice = game_names[0]
             print(f"\Game Loaded: {user_choice}")
         else: 
             print("\nSAVED GAMES")
-            for i in range(len(game_data)):
-                print(game_data[i][0])
+            for i in range(len(game_names)):
+                print(game_names[i])
             user_choice = input('\nChoose a game to load: ')
     
     #choose and load game
     sql_get_game = """SELECT * FROM saved_games WHERE saved_games.game_name = %s """
     str_subs = (user_choice,)
     cur.execute(sql_get_game,str_subs)
-    game_data = cur.fetchone()
+    game_names = cur.fetchone()
     # restart if user input not in db
-    if game_data is None:
+    if game_names is None:
         print('\nInvalid name - must type name exactly')
         cur.close()
         conn.close()
@@ -213,7 +216,7 @@ def load_saved_board() -> GameState:
     else:
         cur.close()
         conn.close()  
-        return GameState(game_data[1],game_data[2],game_data[3],game_data[4],game_data[5],game_data[6])
+        return GameState(game_names[1],game_names[2],game_names[3],game_names[4],game_names[5],game_names[6])
     
 
 # VISUAL | Adds row and colum labels - asethetic only
@@ -382,11 +385,12 @@ def undo_turn(gb:List[List],last_coordinates:tuple) -> List[List]:
 
 def update_user_stats(winner:str, loser:str):
     # get current user stats - wins, losses
+    # TODO:Nico get rid of the for loop
     for player in (winner,loser):
         sql = """SELECT wins,losses FROM ttt_users WHERE ttt_users.user_name = %s"""
         str_subs = (player,)
         player_stats = query_db(sql,str_subs) 
-    # change stats and update in db - wins/loseses, percent_wins
+    # change stats and update in db - wins/losses, percent_wins
         if player == winner:
             player_wins = player_stats[0][0] + 1
             player_percent_wins = (player_wins/(player_wins + player_stats[0][1]))*100 
@@ -423,6 +427,7 @@ def play() -> str:
     resp_game_type = input("\nWhat kind of game do you want? \nA. New Game \nB. Saved Game\n> ")
     # Saved game
     if resp_game_type[0].capitalize() == 'B' or resp_game_type[0].capitalize() == 'S':
+        # TODO:Nico move this to a separate `initialize_db` script
         create_saved_games_table() 
         game_state = load_saved_board()
         gb = game_state.gb
