@@ -1,11 +1,11 @@
-# TO DO
-# create config file for save.txt 
+# TODO
 
 import copy
 import json 
 from datetime import datetime
 from pathlib import Path
-import re 
+import re
+from sqlite3 import Cursor 
 from typing import Dict, List, Tuple, Union
 import psycopg2
 from configparser import ConfigParser #to do with accesing .ini files
@@ -41,7 +41,6 @@ class GameState:
 
 # Get db connection data from config.ini 
 def config(config_file:str='config/config.ini', section:str='postgresql') -> dict:
-    # pdb.set_trace()
     parser = ConfigParser()
     parser.read(config_file)
     db_params = {}
@@ -54,40 +53,41 @@ def config(config_file:str='config/config.ini', section:str='postgresql') -> dic
     return db_params 
 
 
-def update_db(sql:str,str_subs:tuple=None) -> None:
-    conn = None
-    params = config()
-    conn = psycopg2.connect(**params)
-    cur = conn.cursor()
-    if not str_subs:
-        cur.execute(sql)
-    else:
-        cur.execute(sql,str_subs)
-    conn.commit()
-    cur.close()
-    conn.close() 
+# def update_db(sql:str,str_subs:tuple=None) -> None:
+#     conn = None
+#     params = config()
+#     conn = psycopg2.connect(**params)
+#     cur = conn.cursor()
+#     if not str_subs:
+#         cur.execute(sql)
+#     else:
+#         cur.execute(sql,str_subs)
+#     conn.commit()
+#     cur.close()
+#     conn.close() 
 
-def query_db(sql:str, str_subs:tuple=None) -> List[Tuple]:
-    conn = None
-    params = config()
-    conn = psycopg2.connect(**params)
-    cur = conn.cursor()
-    if not str_subs:
-        cur.execute(sql)
-    else:
-        cur.execute(sql,str_subs)
-    db_data = cur.fetchall() 
-    cur.close()
-    conn.close() 
-    return db_data 
+# def query_db(sql:str, str_subs:tuple=None) -> List[Tuple]:
+#     conn = None
+#     params = config()
+#     conn = psycopg2.connect(**params)
+#     cur = conn.cursor()
+#     if not str_subs:
+#         cur.execute(sql)
+#     else:
+#         cur.execute(sql,str_subs)
+#     db_data = cur.fetchall() 
+#     cur.close()
+#     conn.close() 
+#     return db_data 
         
 
-def select_users() -> tuple: 
+def select_users(cur) -> tuple: 
     print("Select a user or create a new one:\n\nUSERS ")
     
     #print all user names already in db
     sql = """SELECT user_name FROM ttt_users"""
-    names : List[Tuple[str]] = query_db(sql)
+    cur.execute(sql)
+    names : List[Tuple[str]] = cur.fetchall() 
     for i in range(len(names)):
         print(names[i][0])
 
@@ -99,11 +99,12 @@ def select_users() -> tuple:
     for player in (player1,player2):
         # pdb.set_trace()
         sql = """SELECT MAX("rank") FROM ttt_users"""
-        max_rank : int = query_db(sql)[0][0]
+        cur.execute(sql)
+        max_rank : int = cur.fetchall()[0][0]
         new_user_rank = max_rank + 1
         sql = """INSERT INTO ttt_users(user_name,rank) VALUES(%s,%s) ON CONFLICT (user_name) DO NOTHING"""
         str_subs = (player, new_user_rank)
-        update_db(sql, str_subs) 
+        cur.execute(sql,str_subs)
     return (player1,player2)
 
 
@@ -120,44 +121,18 @@ def choose_board_size() -> int:
     return size 
 
 
-# Create table (if unexistant) in postgres db to store info of saved games 
-def create_saved_games_table():
-    sql_create = """
-    CREATE TABLE IF NOT EXISTS saved_games(
-        game_id Serial PRIMARY KEY,
-        game_name VARCHAR(50) NOT NULL,
-        gb TEXT[3][3] NOT NULL,
-        current_player VARCHAR(10), 
-        move_log JSONB)"""
-
-    conn = None
-    params = config()
-    conn = psycopg2.connect(**params)
-    cur = conn.cursor()
-    cur.execute(sql_create) 
-    conn.commit() 
-    conn.close()
-
-def save_game(game_state:GameState) -> None:
-    # pdb.set_trace()
+def save_game(game_state:GameState, cur, conn) -> None:
     game_state.name = input('save as: ')
-
-    conn = None
-    params = config()
-    conn = psycopg2.connect(**params)
-    cur = conn.cursor()
 
     # check if game already in db
     sql_check_db = "SELECT * FROM saved_games WHERE saved_games.game_name = %s"
     cur.execute(sql_check_db,(game_state.name,))
-    db_data = cur.fetchall()
-    if len(db_data) > 0: #update entry
+    name_match = cur.fetchall()
+    if len(name_match) > 0: #update entry
         print("\nGame already exists, do you want to overwrite it?")
         overwrite = input("\nY/N: ")
         if overwrite.upper() == 'N':
-            cur.close()
-            conn.close()
-            return save_game(game_state)
+            return save_game(game_state, cur)
         else: 
             sql = """UPDATE saved_games 
                 SET gb = %s, current_player = %s, move_log = %s
@@ -170,24 +145,17 @@ def save_game(game_state:GameState) -> None:
     
     cur.execute(sql,str_subs)
     conn.commit() 
-    cur.close()
-    conn.close()
     return True
 
-def load_saved_board() -> GameState:
-    # TODO:Nico use query_db
-    conn = None
-    params = config()
-    conn = psycopg2.connect(**params)
-    cur = conn.cursor()
-    
+def load_saved_board(cur) -> GameState:    
     game_names = []
     while len(game_names) == 0: 
-        search = input("search for a game or press enter to list all: ")
+        search = input("search for a game or press enter to list all games: ")
 
         #list games
-        sql_list_games = """SELECT game_name FROM saved_games WHERE game_name LIKE '%s%' """
-        cur.execute(sql_list_games, (search,))
+        # TODO: change formatting to %s -> was getting tuple index out of range when I had %s in there??
+        sql_list_games = f"""SELECT game_name FROM saved_games WHERE game_name LIKE '{search}%' """
+        cur.execute(sql_list_games)
         game_names : List[str] = [t[0] for t in cur.fetchall()]
         if len(game_names) == 0:
             print("\nNo games found, try again")
@@ -209,13 +177,9 @@ def load_saved_board() -> GameState:
     # restart if user input not in db
     if game_names is None:
         print('\nInvalid name - must type name exactly')
-        cur.close()
-        conn.close()
-        return load_saved_board()
-    #close connection, return loaded game
-    else:
-        cur.close()
-        conn.close()  
+        return load_saved_board(cur)
+    # return loaded game
+    else: 
         return GameState(game_names[1],game_names[2],game_names[3],game_names[4],game_names[5],game_names[6])
     
 
@@ -420,61 +384,68 @@ def update_user_stats(winner:str, loser:str):
 
 
 def play() -> str:
-    print(INTRO_TEXT)
+    try:  
+        conn = None
+        params = config()
+        conn = psycopg2.connect(**params)
+        cur = conn.cursor()
 
-    player1, player2 = select_users()
- 
-    resp_game_type = input("\nWhat kind of game do you want? \nA. New Game \nB. Saved Game\n> ")
-    # Saved game
-    if resp_game_type[0].capitalize() == 'B' or resp_game_type[0].capitalize() == 'S':
-        # TODO:Nico move this to a separate `initialize_db` script
-        create_saved_games_table() 
-        game_state = load_saved_board()
-        gb = game_state.gb
-        
-    #New game
-    else:
-        chosen_board_size = choose_board_size()
-        if chosen_board_size == 4:
-            gb = copy.deepcopy(EMPTY_4X4_BOARD)
-        elif chosen_board_size == 3: 
-            gb = copy.deepcopy(EMPTY_3X3_BOARD)
-        game_state = GameState('new',gb,'x',list(),player1,player2)
-    print_beautiful_board(add_axis_title(game_state.gb))
+        print(INTRO_TEXT)
 
-    winner = False
-    while not winner:
-        processed_user_input = get_move(game_state)
-        # Save game
-        if processed_user_input == 'save':
-            save_game(game_state)
-            print('your game has been saved')
-            return EXIT
-        # Undo last move
-        elif processed_user_input == 'undo':
-            last_coordinate = game_state.move_log.pop()
-            game_state.gb = undo_turn(game_state.gb,last_coordinate)
-            print_beautiful_board(add_axis_title(game_state.gb))
-       # update game with new move
-        else:
-            game_state.gb = update_board(game_state, processed_user_input)
-            game_state.move_log.append(processed_user_input)
-            winner = check_win(game_state.gb, game_state.player1, game_state.player2)
-            if winner:
-                loser = game_state.player1
-                if winner == game_state.player1:
-                    loser = game_state.player2
-                update_user_stats(winner,loser)  
-                break 
-            if len(game_state.move_log) == len(game_state.gb)**2:
-                print('STALE MATE, GAME OVER!')
-                return EXIT 
-        if game_state.current_player == 'x':
-            game_state.current_player = 'o'
-        elif game_state.current_player == 'o':
-            game_state.current_player = 'x'
+        player1, player2 = select_users(cur)
+
+        resp_game_type = input("\nWhat kind of game do you want? \nA. New Game \nB. Saved Game\n> ")
+        # Saved game
+        if resp_game_type[0].capitalize() == 'B' or resp_game_type[0].capitalize() == 'S':
+            game_state = load_saved_board(cur)
+            gb = game_state.gb
             
-    return EXIT
+        #New game
+        else:
+            chosen_board_size = choose_board_size()
+            if chosen_board_size == 4:
+                gb = copy.deepcopy(EMPTY_4X4_BOARD)
+            elif chosen_board_size == 3: 
+                gb = copy.deepcopy(EMPTY_3X3_BOARD)
+            game_state = GameState('new',gb,'x',list(),player1,player2)
+        print_beautiful_board(add_axis_title(game_state.gb))
+
+        winner = False
+        while not winner:
+            processed_user_input = get_move(game_state)
+            # Save game
+            if processed_user_input == 'save':
+                save_game(game_state,cur, conn)
+                print('your game has been saved')
+                return EXIT
+            # Undo last move
+            elif processed_user_input == 'undo':
+                last_coordinate = game_state.move_log.pop()
+                game_state.gb = undo_turn(game_state.gb,last_coordinate)
+                print_beautiful_board(add_axis_title(game_state.gb))
+        # update game with new move
+            else:
+                game_state.gb = update_board(game_state, processed_user_input)
+                game_state.move_log.append(processed_user_input)
+                winner = check_win(game_state.gb, game_state.player1, game_state.player2)
+                if winner:
+                    loser = game_state.player1
+                    if winner == game_state.player1:
+                        loser = game_state.player2
+                    update_user_stats(winner,loser)  
+                    break 
+                if len(game_state.move_log) == len(game_state.gb)**2:
+                    print('STALE MATE, GAME OVER!')
+                    return EXIT 
+            if game_state.current_player == 'x':
+                game_state.current_player = 'o'
+            elif game_state.current_player == 'o':
+                game_state.current_player = 'x'
+                
+        return EXIT
+    finally:
+        cur.close()
+        conn.close()
 
 if __name__ == "__main__":      
     play()

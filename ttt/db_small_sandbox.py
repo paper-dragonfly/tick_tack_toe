@@ -28,11 +28,15 @@ sql3 = "UPDATE ttt_users SET wins = 0 WHERE ttt_users.user_name = 'paper_dragonf
 sql4 = "INSERT INTO ttt_users(user_name) VALUES('nickleboo') ON CONFLICT (user_name) DO NOTHING"
 sql5 = """SELECT MAX("rank") FROM ttt_users""" 
 val = (name,)
-cur.execute(sql5)
-r = (cur.fetchall())[0][0]
-print(type(r))
-print(r)
+print(cur)
 
+def pass_cur(cur,sql):
+    print(cur)
+    print('NOTE', cur.execute(sql).fetchall())
+    dbd = cur.fetchall()
+    return dbd
+
+print(pass_cur(cur,sql2)) 
 
 #### 
 
