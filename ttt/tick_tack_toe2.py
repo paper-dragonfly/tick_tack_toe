@@ -13,6 +13,14 @@ import pdb
 
 EXIT = 'exit'
 
+INTRO_TEXT ="""
+\nWelcome to Tick_Tack_Toe!\n
+    What you can do on your turn: 
+    Type coordinates to place your marker
+    Type 's' or 'save' to save your game
+    Type 'undo' to undo the last move
+    Type 'end' to cancel the game\n """
+
 EMPTY_3X3_BOARD = [['_','_','_'],
                    ['_','_','_'],
                    ['_','_','_']]
@@ -23,33 +31,13 @@ EMPTY_4X4_BOARD = [['_','_','_','_'],
                     ['_','_','_','_']]
 
 class GameState:
-    def __init__(self,name, gb,current_player, move_log) -> None:
+    def __init__(self,name, gb,current_player, move_log, player1, player2) -> None:
         self.name = name
         self.gb: List[List] = gb
         self.current_player: str = current_player
         self.move_log: List[tuple] = move_log
-
-def choose_board_size() -> int:
-    resp_choice = input('Choose a board size \n a. 3x3 \n b. 4x4\n> ') 
-    size = None
-    if resp_choice[0].lower() == 'a' or resp_choice[0] == '3':
-        size = 3
-    elif resp_choice[0].lower() == 'b' or resp_choice[0] == '4':
-        size = 4
-    else:
-        print('Invalid choice. Pick a or b')
-        choose_board_size()
-    return size 
-
-
-# returns path to directory where game is/should be saved
-def get_appropriate_save_directory(config_file:str,test=False) -> str:    
-    config = configparser.ConfigParser()
-    config.read(config_file)
-    if test == True:
-        return config.get('INDEX_ALPHABET_FILES','saved_test_games')
-    return config.get('INDEX_ALPHABET_FILES','saved_games_directory')
-    # eg "docs/alphebetized"
+        self.player1: str = player1
+        self.player2: str = player2
 
 # Get db connection data from config.ini 
 def config(config_file:str='config/config.ini', section:str='postgresql') -> dict:
@@ -64,6 +52,72 @@ def config(config_file:str='config/config.ini', section:str='postgresql') -> dic
     else:
         raise Exception(f"Section {section} not found in file {config_file}")
     return db_params 
+
+
+def update_db(sql:str,str_subs:tuple=None) -> None:
+    conn = None
+    params = config()
+    conn = psycopg2.connect(**params)
+    cur = conn.cursor()
+    if not str_subs:
+        cur.execute(sql)
+    else:
+        cur.execute(sql,str_subs)
+    conn.commit()
+    cur.close()
+    conn.close() 
+
+def query_db(sql:str, str_subs:tuple=None) -> List[Tuple]:
+    conn = None
+    params = config()
+    conn = psycopg2.connect(**params)
+    cur = conn.cursor()
+    if not str_subs:
+        cur.execute(sql)
+    else:
+        cur.execute(sql,str_subs)
+    db_data = cur.fetchall() 
+    cur.close()
+    conn.close() 
+    return db_data 
+        
+
+def select_users() -> tuple: 
+    print("Select a user or create a new one:\n\nUSERS ")
+    
+    #print all user names already in db
+    sql = """SELECT user_name FROM ttt_users"""
+    names = query_db(sql,'all')
+    for i in range(len(names)):
+        print(names[i][0])
+
+    #get players' chosen user names
+    player1 = input("\nPlayer1 user name: ")
+    player2 = input("player2 user name: ")
+
+    # add player to db if they don't already exist and assign them the lowest rank
+    for player in (player1,player2):
+        # pdb.set_trace()
+        sql = """SELECT MAX ("rank") FROM ttt_users"""
+        new_user_rank = (query_db(sql))[0][0] + 1
+        sql = """INSERT INTO ttt_users(user_name,rank) VALUES(%s,%s) ON CONFLICT (user_name) DO NOTHING"""
+        str_subs = (player, new_user_rank)
+        update_db(sql, str_subs) 
+    return (player1,player2)
+
+
+def choose_board_size() -> int:
+    resp_choice = input('Choose a board size \n a. 3x3 \n b. 4x4\n> ') 
+    size = None
+    if resp_choice[0].lower() == 'a' or resp_choice[0] == '3':
+        size = 3
+    elif resp_choice[0].lower() == 'b' or resp_choice[0] == '4':
+        size = 4
+    else:
+        print('Invalid choice. Pick a or b')
+        choose_board_size()
+    return size 
+
 
 # Create table (if unexistant) in postgres db to store info of saved games 
 def create_saved_games_table():
@@ -86,7 +140,6 @@ def create_saved_games_table():
 def save_game(game_state:GameState) -> None:
     # pdb.set_trace()
     game_state.name = input('save as: ')
-    overwrite = None
 
     conn = None
     params = config()
@@ -103,19 +156,18 @@ def save_game(game_state:GameState) -> None:
         if overwrite.upper() == 'N':
             cur.close()
             conn.close()
-            # pdb.set_trace()
             return save_game(game_state)
         else: 
             sql = """UPDATE saved_games 
                 SET gb = %s, current_player = %s, move_log = %s
                 WHERE saved_games.game_name = %s"""
-            vals = (game_state.gb, game_state.current_player, json.dumps(game_state.move_log), game_state.name)
+            str_subs = (game_state.gb, game_state.current_player, json.dumps(game_state.move_log), game_state.name)
     else: #add new entry
-        sql = """INSERT INTO saved_games(game_name,gb,current_player,move_log)
-                    VALUES (%s,%s,%s,%s)"""
-        vals = (game_state.name, game_state.gb, game_state.current_player, json.dumps(game_state.move_log))
+        sql = """INSERT INTO saved_games(game_name,gb,current_player,move_log,player1,player2)
+                    VALUES (%s,%s,%s,%s,%s,%s)"""
+        str_subs = (game_state.name, game_state.gb, game_state.current_player, json.dumps(game_state.move_log), game_state.player1, game_state.player2)
     
-    cur.execute(sql,vals)
+    cur.execute(sql,str_subs)
     conn.commit() 
     cur.close()
     conn.close()
@@ -127,31 +179,41 @@ def load_saved_board() -> GameState:
     conn = psycopg2.connect(**params)
     cur = conn.cursor()
     
-    #list games
-    sql_list_games = """SELECT game_name FROM saved_games"""
-    cur.execute(sql_list_games)
-    game_data = cur.fetchall()
-    print("\nSAVED GAMES")
-    for i in range(len(game_data)):
-        print(game_data[i][0])
+    game_data = []
+    while len(game_data) == 0: 
+        search = input("search for a game or press enter to list all: ")
+
+        #list games
+        sql_list_games = f"""SELECT game_name FROM saved_games WHERE game_name LIKE '{search}%' """
+        cur.execute(sql_list_games)
+        game_data = cur.fetchall()
+        if len(game_data) == 0:
+            print("\nNo games found, try again")
+        elif len(game_data) == 1:
+            user_choice = game_data[0][0]
+            print(f"\Game Loaded: {user_choice}")
+        else: 
+            print("\nSAVED GAMES")
+            for i in range(len(game_data)):
+                print(game_data[i][0])
+            user_choice = input('\nChoose a game to load: ')
     
     #choose and load game
-    user_choice = input('\nChoose a game to load: ')
     sql_get_game = """SELECT * FROM saved_games WHERE saved_games.game_name = %s """
-    vals = (user_choice,)
-    cur.execute(sql_get_game,vals)
+    str_subs = (user_choice,)
+    cur.execute(sql_get_game,str_subs)
     game_data = cur.fetchone()
     # restart if user input not in db
-    if game_data == None:
-        print('Invalid name - must type name exactly')
+    if game_data is None:
+        print('\nInvalid name - must type name exactly')
         cur.close()
         conn.close()
-        load_saved_board()
+        return load_saved_board()
     #close connection, return loaded game
     else:
         cur.close()
         conn.close()  
-        return GameState(game_data[1],game_data[2],game_data[3],game_data[4])
+        return GameState(game_data[1],game_data[2],game_data[3],game_data[4],game_data[5],game_data[6])
     
 
 # VISUAL | Adds row and colum labels - asethetic only
@@ -233,12 +295,15 @@ def check_di(gb:List[List]) -> Union[str,bool]:
     return False
             
 
-def check_win(gb:List[List]) -> Union[str,bool]:
+def check_win(gb:List[List],player1:str, player2:str) -> Union[str,bool]:
     poss = [check_hor(gb),check_vert(gb),check_di(gb)]
     for f in poss:
         if f:
-            print(f'{f} Wins, Game Over!\n')
-            return f
+            player = player1
+            if f == 'o':
+                player = player2
+            print(f'{player} Wins, Game Over!\n')
+            return player
     else:
         return False
 
@@ -274,7 +339,10 @@ def check_availability(gb:List[List],r:int,c:int) -> bool:
         return False
             
 def get_move(game_state: GameState) -> Union[Tuple,str]:
-    move = (input(f"\nPlayer {game_state.current_player}: ")).upper()
+    user_name = game_state.player1
+    if game_state.current_player == "o":
+        user_name = game_state.player2
+    move = (input(f"\nPlayer {user_name} ({game_state.current_player}): ")).upper()
     if move[0] == 'S':
         return 'save'
     if move == 'UNDO':
@@ -312,16 +380,53 @@ def undo_turn(gb:List[List],last_coordinates:tuple) -> List[List]:
     gb_copy[r][c] = '_'
     return gb_copy 
 
+def update_user_stats(winner:str, loser:str):
+    # get current user stats - wins, losses
+    for player in (winner,loser):
+        sql = """SELECT wins,losses FROM ttt_users WHERE ttt_users.user_name = %s"""
+        str_subs = (player,)
+        player_stats = query_db(sql,str_subs) 
+    # change stats and update in db - wins/loseses, percent_wins
+        if player == winner:
+            player_wins = player_stats[0][0] + 1
+            player_percent_wins = (player_wins/(player_wins + player_stats[0][1]))*100 
+            sql = """UPDATE ttt_users AS u SET wins= %s, percent_wins = %s WHERE u.user_name = %s"""
+            str_subs = (player_wins, player_percent_wins, player) 
+            update_db(sql,str_subs)
+        elif player == loser:
+            player_losses = player_stats[0][1] + 1
+            player_percent_wins = (player_stats[0][0]/(player_losses + player_stats[0][0]))*100 
+            sql = """UPDATE ttt_users AS u SET losses= %s, percent_wins = %s WHERE u.user_name = %s"""
+            str_subs = (player_losses,player_percent_wins, player)
+            update_db(sql,str_subs)
+    # update rank - reranks all users
+    sql = """SELECT user_name, percent_wins FROM ttt_users ORDER BY percent_wins DESC"""
+    users_by_score = query_db(sql)
+    ranks = [(users_by_score[0][0],1)] #[(user_name, rank)]
+    for i in range(1,len(users_by_score)):
+        # if adj scores are equal
+        if users_by_score[i][1] == users_by_score[i-1][1]:
+            ranks.append((users_by_score[i][0],ranks[i-1][1]))    
+        else:
+            ranks.append((users_by_score[i][0],i+1))
+    for tup in ranks:
+        sql = """UPDATE ttt_users SET rank = %s WHERE user_name = %s"""
+        str_subs = (tup[1],tup[0])
+        update_db(sql,str_subs)
+
 
 def play() -> str:
-    print("\nWelcome to Tick_Tack_Toe\nNote: write 's' on your turn to save the game\n")
-    resp_game_type = input("What kind of game do you want? \nA. New Game \nB. Saved Game\n> ")
+    print(INTRO_TEXT)
+
+    player1, player2 = select_users()
+ 
+    resp_game_type = input("\nWhat kind of game do you want? \nA. New Game \nB. Saved Game\n> ")
     # Saved game
     if resp_game_type[0].capitalize() == 'B' or resp_game_type[0].capitalize() == 'S':
+        create_saved_games_table() 
         game_state = load_saved_board()
         gb = game_state.gb
-        current_player = game_state.current_player
-        move_log = game_state.move_log
+        
     #New game
     else:
         chosen_board_size = choose_board_size()
@@ -329,7 +434,7 @@ def play() -> str:
             gb = copy.deepcopy(EMPTY_4X4_BOARD)
         elif chosen_board_size == 3: 
             gb = copy.deepcopy(EMPTY_3X3_BOARD)
-        game_state = GameState('new',gb,'x',list())
+        game_state = GameState('new',gb,'x',list(),player1,player2)
     print_beautiful_board(add_axis_title(game_state.gb))
 
     winner = False
@@ -349,8 +454,12 @@ def play() -> str:
         else:
             game_state.gb = update_board(game_state, processed_user_input)
             game_state.move_log.append(processed_user_input)
-            winner = check_win(game_state.gb)
+            winner = check_win(game_state.gb, game_state.player1, game_state.player2)
             if winner:
+                loser = game_state.player1
+                if winner == game_state.player1:
+                    loser = game_state.player2
+                update_user_stats(winner,loser)  
                 break 
             if len(game_state.move_log) == len(game_state.gb)**2:
                 print('STALE MATE, GAME OVER!')

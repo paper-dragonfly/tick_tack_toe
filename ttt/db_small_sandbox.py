@@ -24,14 +24,16 @@ cur = conn.cursor()
 name = 'db_tet'
 sql = "SELECT * FROM saved_games WHERE saved_games.game_name = %s"
 sql2 = "SELECT game_name FROM saved_games"
+sql3 = "UPDATE ttt_users SET wins = 0 WHERE ttt_users.user_name = 'paper_dragonfly' "
+sql4 = "INSERT INTO ttt_users(user_name) VALUES('nickleboo') ON CONFLICT (user_name) DO NOTHING"
+sql5 = """SELECT MAX("rank") FROM ttt_users""" 
 val = (name,)
-# cur.execute(sql,val)
-cur.execute(sql2)
-data = cur.fetchall()
-for i in range(len(data)):
-    print(data[i][0])
-# print(len(data))
-print(data)
+cur.execute(sql5)
+r = (cur.fetchall())[0][0]
+print(type(r))
+print(r)
+
+
 #### 
 
 conn.commit()
