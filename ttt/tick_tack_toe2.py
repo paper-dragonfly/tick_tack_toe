@@ -87,7 +87,7 @@ def select_users() -> tuple:
     
     #print all user names already in db
     sql = """SELECT user_name FROM ttt_users"""
-    names = query_db(sql,'all')
+    names = query_db(sql)
     for i in range(len(names)):
         print(names[i][0])
 
