@@ -19,6 +19,7 @@ INTRO_TEXT ="""
     Type coordinates to place your marker
     Type 's' or 'save' to save your game
     Type 'undo' to undo the last move
+    Type 'leader board' to view player stats 
     Type 'end' to cancel the game\n """
 
 EMPTY_3X3_BOARD = [['_','_','_'],
@@ -51,38 +52,13 @@ def config(config_file:str='config/config.ini', section:str='postgresql') -> dic
     else:
         raise Exception(f"Section {section} not found in file {config_file}")
     return db_params 
-
-
-# def update_db(sql:str,str_subs:tuple=None) -> None:
-#     conn = None
-#     params = config()
-#     conn = psycopg2.connect(**params)
-#     cur = conn.cursor()
-#     if not str_subs:
-#         cur.execute(sql)
-#     else:
-#         cur.execute(sql,str_subs)
-#     conn.commit()
-#     cur.close()
-#     conn.close() 
-
-# def query_db(sql:str, str_subs:tuple=None) -> List[Tuple]:
-#     conn = None
-#     params = config()
-#     conn = psycopg2.connect(**params)
-#     cur = conn.cursor()
-#     if not str_subs:
-#         cur.execute(sql)
-#     else:
-#         cur.execute(sql,str_subs)
-#     db_data = cur.fetchall() 
-#     cur.close()
-#     conn.close() 
-#     return db_data 
         
 
-def select_users(cur) -> tuple: 
-    print("Select a user or create a new one:\n\nUSERS ")
+def select_users(cur:psycopg2.extensions.cursor) -> tuple: 
+    print("""
+    Select a user or create a new one:
+    Type 'leader board' to view user statis
+    \nUSERS """)
     
     #print all user names already in db
     sql = """SELECT user_name FROM ttt_users"""
@@ -93,9 +69,14 @@ def select_users(cur) -> tuple:
 
     #get players' chosen user names
     player1 = input("\nPlayer1 user name: ")
+    if player1.lower() == "leader board":
+        print("\nLEADER BOARD")
+        display_leader_board(cur)
+        player1 = input("\nPlayer1 user name: ")
     player2 = input("player2 user name: ")
 
     # add player to db if they don't already exist and assign them the lowest rank
+    ## possibly DELET rank as part of ttt_users
     for player in (player1,player2):
         # pdb.set_trace()
         sql = """SELECT MAX("rank") FROM ttt_users"""
@@ -121,7 +102,7 @@ def choose_board_size() -> int:
     return size 
 
 
-def save_game(game_state:GameState, cur, conn) -> None:
+def save_game(game_state:GameState, cur:psycopg2.extensions.cursor, conn:psycopg2.extensions.connection) -> None:
     game_state.name = input('save as: ')
 
     # check if game already in db
@@ -312,11 +293,17 @@ def get_move(game_state: GameState) -> Union[Tuple,str]:
     move = (input(f"\nPlayer {user_name} ({game_state.current_player}): ")).upper()
     if move[0] == 'S':
         return 'save'
-    if move == 'UNDO':
+    elif move == 'UNDO':
         if len(game_state.move_log) == 0:
             print('No move to undo')
             return get_move(game_state)
         return 'undo'
+    elif move == 'LEADER BOARD':
+        return 'leader_board'
+    elif move == 'EXIT':
+        return 'exit'
+    else:
+        pass
     board_size = len(game_state.gb)
     if board_size == 3:
         valid_moves = re.findall("^(A|B|C).*(1|2|3)$", move)
@@ -368,6 +355,7 @@ def update_user_stats(winner:str, loser:str):
             str_subs = (player_losses,player_percent_wins, player)
             update_db(sql,str_subs)
     # update rank - reranks all users
+    ## TODO: DELETE once other ranking fx is created
     sql = """SELECT user_name, percent_wins FROM ttt_users ORDER BY percent_wins DESC"""
     users_by_score = query_db(sql)
     ranks = [(users_by_score[0][0],1)] #[(user_name, rank)]
@@ -381,6 +369,79 @@ def update_user_stats(winner:str, loser:str):
         sql = """UPDATE ttt_users SET rank = %s WHERE user_name = %s"""
         str_subs = (tup[1],tup[0])
         update_db(sql,str_subs)
+
+
+def display_leader_board(cur:psycopg2.extensions.cursor) :
+    sql_get_summary_stats = """ 
+    WITH 
+    winner_tally AS(
+        SELECT COUNT(*)::float AS ct, winner 
+        FROM ttt_log
+        GROUP BY winner),
+        
+    player1_tally AS(
+        SELECT COUNT(*)::float as ct, player1 
+        FROM ttt_log
+        GROUP BY player1),
+        
+    player2_tally AS(
+        SELECT COUNT(*) as ct, player2 
+        FROM ttt_log
+        GROUP BY player2),
+
+    combo AS(
+        Select
+        CASE WHEN p1.player1 is NULL THEN 0 ELSE p1.ct END AS ct1,
+        CASE WHEN p2.player2 is NULL THEN 0 ELSE p2.ct END AS ct2,
+        CASE WHEN p2.player2 is NULL THEN p1.player1 ELSE p2.player2 END AS player  
+        FROM player2_tally as p2
+        FULL JOIN player1_tally as p1 ON p2.player2 = p1.player1)
+
+    SELECT player, combo.ct1 + combo.ct2 AS "total_games", (winner_tally.ct/(combo.ct1 + combo.ct2))*100 AS percent_wins FROM combo
+    FULL JOIN winner_tally ON combo.player = winner_tally.winner
+    WHERE player IS NOT NULL
+    ORDER BY percent_wins DESC NULLS LAST;"""
+
+    cur.execute(sql_get_summary_stats)
+    summary_stats = cur.fetchall() # player name, total games, %wins
+    
+    # create leader_board dict, populate with highest ranked player
+    highest_ranked_player = summary_stats[0][0]
+    leader_board = {
+        'Player': ['Total Games', '%wins', 'Rank'],
+        highest_ranked_player:[summary_stats[0][1], summary_stats[0][2], 1]}
+
+    
+    for i in range(1,len(summary_stats)):
+        cur_player_tup = summary_stats[i]
+        #add player to leader_board dict
+        leader_board[cur_player_tup[0]] = [cur_player_tup[1], cur_player_tup[2]] 
+        # get info to determin if rank is same or lower than prev player
+        prev_rank = leader_board[summary_stats[i-1][0]][2]
+        prev_pwins = summary_stats[i-1][2]
+        cur_pwins = cur_player_tup[2]
+        if prev_pwins == cur_pwins: # same %wins -> same rank
+            leader_board[cur_player_tup[0]].append(prev_rank)
+        else: #lower %wins -> lower rank
+            leader_board[cur_player_tup[0]].append(i+1)
+
+    for key in leader_board:
+        print(key,leader_board[key])
+
+
+def update_log(game_state:GameState, cur:psycopg2.extensions.cursor, conn:psycopg2.extensions.connection, winner:str=None, loser:str=None, ) -> str:
+    # set stale mate to True or False
+    stale_mate = True
+    if winner:
+        stale_mate = False
+
+    # update log with game stats
+    sql = """INSERT INTO ttt_log(player1, player2, winner, loser, stalemate, time_stamp)
+            VALUES(%s,%s,%s,%s,%s,%s)"""
+    str_subs = (game_state.player1, game_state.player2, winner, loser, stale_mate, datetime.now())
+    cur.execute(sql,str_subs)
+    conn.commit()
+    return EXIT 
 
 
 def play() -> str:
@@ -423,19 +484,35 @@ def play() -> str:
                 last_coordinate = game_state.move_log.pop()
                 game_state.gb = undo_turn(game_state.gb,last_coordinate)
                 print_beautiful_board(add_axis_title(game_state.gb))
+            # Print leader board and continue
+            elif processed_user_input == 'leader_board':
+                print("\nLEADER BOARD")
+                display_leader_board(cur)
+                if game_state.current_player == 'x':
+                    game_state.current_player = 'o'
+                elif game_state.current_player == 'o':
+                    game_state.current_player = 'x'
+            # End game - resign 
+            elif processed_user_input == 'end':
+                print('Game Resigned')
+                return EXIT 
         # update game with new move
             else:
                 game_state.gb = update_board(game_state, processed_user_input)
                 game_state.move_log.append(processed_user_input)
                 winner = check_win(game_state.gb, game_state.player1, game_state.player2)
+                # Someone WON
                 if winner:
                     loser = game_state.player1
                     if winner == game_state.player1:
                         loser = game_state.player2
-                    update_user_stats(winner,loser)  
+                    update_log(game_state,cur,conn,winner,loser)
+                    # update_user_stats(winner,loser)  
                     break 
+                # STALE MATE
                 if len(game_state.move_log) == len(game_state.gb)**2:
                     print('STALE MATE, GAME OVER!')
+                    update_log(game_state,cur,conn)
                     return EXIT 
             if game_state.current_player == 'x':
                 game_state.current_player = 'o'
