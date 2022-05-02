@@ -78,7 +78,7 @@ for i in range(1,len(summary_stats)):
         leader_board[cur_player_tup[0]].append(prev_rank)
     else: #lower %wins -> lower rank
         leader_board[cur_player_tup[0]].append(i+1)
-return leader_board
+print leader_board
 
 
 

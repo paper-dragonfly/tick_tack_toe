@@ -453,8 +453,6 @@ def play() -> str:
 
         print(INTRO_TEXT)
 
-        player1, player2 = select_users(cur)
-
         resp_game_type = input("\nWhat kind of game do you want? \nA. New Game \nB. Saved Game\n> ")
         # Saved game
         if resp_game_type[0].capitalize() == 'B' or resp_game_type[0].capitalize() == 'S':
@@ -463,6 +461,7 @@ def play() -> str:
             
         #New game
         else:
+            player1, player2 = select_users(cur) 
             chosen_board_size = choose_board_size()
             if chosen_board_size == 4:
                 gb = copy.deepcopy(EMPTY_4X4_BOARD)
